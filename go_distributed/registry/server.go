@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,24 +15,112 @@ const ServicesURL = "http://localhost" + ServerPort + "/services"
 
 type registry struct {
 	registrations []Registration
-	mutex         *sync.Mutex
+	mutex         *sync.RWMutex
 }
 
 var reg = registry{ //create variable in package level
 	registrations: make([]Registration, 0),
-	mutex: &sync.Mutex{}, //new(sync.Mutex)
+	mutex:         &sync.RWMutex{}, //new(sync.Mutex)
 }
 
-func(r *registry) add(reg Registration) error {
-	r.mutex.Lock()
+func (r *registry) add(reg Registration) error {
+	r.mutex.RLock()
 	r.registrations = append(r.registrations, reg)
-	r.mutex.Unlock()
+	r.mutex.RUnlock()
+	if err := r.sendRequiredServices(reg); err != nil {
+		return err
+	}
+	r.notify(patch{
+		Added: []patchEntry {
+			{
+				Name: reg.ServiceName,
+				URL: reg.ServiceURL,
+			},
+		},
+	})
 	return nil
 }
 
-func(r *registry) remove(url string) error {
+func (r *registry) notify(fullpatch patch) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock() //大胆随便加，一个rw锁可以被多个goroutine持有
+
+	for _, reg := range r.registrations { // 善用并发优化循环
+		go func (reg Registration) {
+			p := patch{Added: []patchEntry{}, Removed: []patchEntry{}}
+			sendUpdate := false
+			for _, reqService := range reg.RequiredServices {
+				for _, added := range fullpatch.Added {
+					if added.Name == reqService {
+						p.Added = append(p.Added, added)
+						sendUpdate = true
+					}
+				}
+				for _, removed := range fullpatch.Removed {
+					if removed.Name == reqService {
+						p.Removed = append(p.Removed, removed)
+						sendUpdate = true
+					}
+				}
+			}
+			if sendUpdate {
+				if err := r.sendPatch(p, reg.ServiceURL); err != nil {
+					log.Println(err)
+					return
+				}
+			}
+		}(reg)
+	}
+}
+
+func (r *registry) sendRequiredServices(reg Registration) error {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	var p patch
+	for _, serviceReg := range r.registrations {
+		for _, reqService := range reg.RequiredServices {
+			if serviceReg.ServiceName == reqService {
+				p.Added = append(p.Added, patchEntry{
+					Name: serviceReg.ServiceName,
+					URL:  serviceReg.ServiceURL,
+				})
+			}
+		}
+	}
+	err := r.sendPatch(p, reg.ServiceUpdateURL)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *registry) sendPatch(p patch, url string) error {
+	d, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	res, err := http.Post(url, "application/json", bytes.NewBuffer(d))
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed at send patch request to target service with response"+
+			" status code: %v", res.StatusCode)
+	}
+	return nil
+}
+
+func (r *registry) remove(url string) error {
 	for k, v := range r.registrations {
 		if v.ServiceURL == url {
+			r.notify(patch{
+				Removed: []patchEntry{
+					{
+						Name: v.ServiceName,
+						URL: v.ServiceURL,
+					},
+				},
+			})
 			r.mutex.Lock()
 			r.registrations = append(r.registrations[:k], r.registrations[k+1:]...)
 			r.mutex.Unlock()
@@ -41,7 +130,7 @@ func(r *registry) remove(url string) error {
 	return fmt.Errorf("service at URL %s not found", url)
 }
 
-type RegistryService struct {}
+type RegistryService struct{}
 
 func (s RegistryService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println("Request received")
@@ -60,7 +149,7 @@ func (s RegistryService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		
+
 	case http.MethodDelete:
 		payload, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -74,7 +163,6 @@ func (s RegistryService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Removing service at URL: %v\n", string(payload))
-
 
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

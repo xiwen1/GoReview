@@ -8,6 +8,7 @@ import (
 	"net/http"
 )
 
+//规定每个service的基本行为
 func Start(ctx context.Context, host, port string, r registry.Registration,
 	RegisterHandlers func()) (context.Context, error) {
 	RegisterHandlers()
