@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-//注意：客户端是跑在每个使用该服务的客户的进程上的
+// 注意：客户端是跑在每个使用该服务的客户的进程上的
 func RegisterService(r Registration) error {
 	serviceUpdateURL, err := url.Parse(r.ServiceUpdateURL)
 	if err != nil {
@@ -31,8 +31,8 @@ func RegisterService(r Registration) error {
 	}
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to register service. Registry service " + 
-		"response with code: %v", res.StatusCode)
+		return fmt.Errorf("failed to register service. Registry service "+
+			"response with code: %v", res.StatusCode)
 	}
 
 	return nil
@@ -57,10 +57,10 @@ func (s *serviceUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
 func ShutdownService(url string) error {
-	req, err := http.NewRequest(http.MethodDelete, ServicesURL, 
+	req, err := http.NewRequest(http.MethodDelete, ServicesURL,
 		bytes.NewBuffer([]byte(url)))
 	if err != nil {
-		return err 
+		return err
 	}
 	req.Header.Add("Content-Type", "text/plain")
 	res, err := http.DefaultClient.Do(req)
@@ -69,31 +69,31 @@ func ShutdownService(url string) error {
 	}
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to deregister service. Registry service" + 
+		return fmt.Errorf("failed to deregister service. Registry service"+
 			"service responded with code: %v", res.StatusCode)
 	}
 	return nil
 }
 
 type providers struct {
-	services map[ServiceName][]string 
-	mutex  *sync.RWMutex
+	services map[ServiceName][]string
+	mutex    *sync.RWMutex
 }
 
-var prov = providers {
+var prov = providers{
 	services: make(map[ServiceName][]string),
-	mutex: &sync.RWMutex{},
+	mutex:    &sync.RWMutex{},
 }
 
 func (p *providers) Update(pat patch) error {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	
+
 	for _, patchEntry := range pat.Added {
 		if _, ok := p.services[patchEntry.Name]; !ok {
 			p.services[patchEntry.Name] = make([]string, 0)
 		}
-		var urls = p.services[patchEntry.Name]  // slice is passsed by reference
+		var urls = p.services[patchEntry.Name] // slice is passsed by reference
 		checked := true
 		for _, url := range urls {
 			if url == patchEntry.URL {
@@ -110,7 +110,7 @@ func (p *providers) Update(pat patch) error {
 		if urls, ok := p.services[patchEntry.Name]; ok {
 			for k, url := range urls {
 				if url == patchEntry.URL {
-					urls = append(urls[:k], urls[k + 1:]...)
+					urls = append(urls[:k], urls[k+1:]...)
 				}
 			}
 		}
@@ -118,7 +118,7 @@ func (p *providers) Update(pat patch) error {
 	return nil
 }
 
-func (p *providers) get(name ServiceName) (string, error) {
+func  (p *providers) get(name ServiceName) (string, error) {
 	if _, ok := p.services[name]; !ok {
 		return "", fmt.Errorf("failed to get service from providers")
 	}
