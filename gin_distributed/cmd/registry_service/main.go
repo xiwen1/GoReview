@@ -9,8 +9,7 @@ import (
 )
 
 func main() {
-	host, port := "localhost", "5000"
-	serviceURL := fmt.Sprintf("http://%v:%v", host, port)
+	serviceURL := registry.Addr + registry.Pattern
 
 	server := http.Server{
 		Addr: serviceURL,

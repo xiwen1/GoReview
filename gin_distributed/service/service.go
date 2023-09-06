@@ -18,6 +18,11 @@ func Start( // 入口函数不应承担太多功能
 
 	r := gin.Default()
 	registerHandlers(r)
+	r, err := registry.RegisterUpdateService(r, reg)
+	if err != nil {
+		log.Println(err)
+		return ctx, err 
+	}
 	ctx = startService(reg, ctx, r)
 	
 	return ctx, nil
@@ -33,13 +38,19 @@ func startService(reg registry.Registration, ctx context.Context,
 		}
 		go func() {
 			log.Println(server.ListenAndServe())
+			if err := registry.Shutdown(reg.ServiceURL); err != nil {
+				log.Print(err)
+			}
 			cancel()
 		}()
 
 		go func() {
-			fmt.Printf("Service %v started, press any key to shutdown", reg.ServiceName)
+			fmt.Printf("Service %v started, press any key to shutdown\n", reg.ServiceName)
 			var s string
 			fmt.Scanf("%v", &s)
+			if err := registry.Shutdown(reg.ServiceURL); err != nil {
+				log.Print(err)
+			}
 			server.Shutdown(ctx)
 			cancel()
 		}()

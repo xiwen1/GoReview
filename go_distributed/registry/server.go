@@ -51,7 +51,7 @@ func (r *registry) notify(fullpatch patch) {
 			p := patch{Added: []patchEntry{}, Removed: []patchEntry{}}
 			sendUpdate := false
 			for _, reqService := range reg.RequiredServices {
-				for _, added := range fullpatch.Added {
+				for _, added :=   range fullpatch.Added {
 					if added.Name == reqService {
 						p.Added = append(p.Added, added)
 						sendUpdate = true
@@ -65,7 +65,7 @@ func (r *registry) notify(fullpatch patch) {
 				}
 			}
 			if sendUpdate {
-				if err := r.sendPatch(p, reg.ServiceURL); err != nil {
+				if err := r.sendPatch(p, reg.ServiceUpdateURL); err != nil {
 					log.Println(err)
 					return
 				}
