@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -104,6 +105,47 @@ func (r *registry) sendPatch(p patch, url string) error {
 		return fmt.Errorf("failed to send patch to service: %v", url)
 	}
 	return nil 
+}
+
+var once sync.Once
+
+func SetupHeartbeat() {
+	once.Do(func ()  {
+		reg.heartbeat(60 * time.Second)
+	})
+}
+
+func (r *registry) heartbeat(freq time.Duration) {
+	for {
+		wg := &sync.WaitGroup{}
+
+		for _, regis := range r.registrations {
+			wg.Add(1)
+			go func(regis Registration) {
+				removed := false
+				defer wg.Done()
+				for attempt := 0; attempt < 3; attempt ++ {
+					res, err := http.Get(regis.HeartbeatURL)
+					if err != nil {
+						log.Println(err) 
+					} else if res.StatusCode == http.StatusOK {
+						log.Printf("HeartBeat check passed for %v", regis.ServiceName) 
+						if removed {
+							r.add(regis)
+						}
+						break
+					}
+					if !removed {
+						removed = true
+						r.remove(regis.ServiceURL)
+					}
+				}
+			}(regis) // 将参数传入确保不受外界变量的影响
+		}
+
+		wg.Wait()
+		time.Sleep(freq)
+	}
 }
 
 func RegistryRouter() *gin.Engine {

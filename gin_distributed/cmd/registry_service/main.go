@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	registry.SetupHeartbeat()
 	serviceURL := registry.Addr + registry.Pattern
 
 	server := http.Server{
